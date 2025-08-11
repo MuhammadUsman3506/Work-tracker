@@ -22,23 +22,58 @@
       font-size: 14px;
     }
     .upload-section { margin-top: 10px; }
-    .status { margin-top: 6px; font-size: 0.9em; }
-    .link { word-break: break-all; }
   </style>
 </head>
 <body>
   <h1>📘 2025 Work Tracker</h1>
 
-  <!-- Simple note: replace YOUR_VERCEL_URL below with your deployed Vercel function URL -->
+  <!-- Month Sections Start -->
   <script>
-    const VERCEL_UPLOAD_URL = "https://work-tracker-9kgo73bl9-muhammadusman3506s-projects.vercel.app/api/upload"; // <-- REPLACE THIS
+    const VERCEL_UPLOAD_URL = "https://work-tracker-9kgo73bl9-muhammadusman3506s-projects.vercel.app/api/upload";
 
-    const months = {
-      "January": 31, "February": 28, "March": 31, "April": 30, "May": 31, "June": 30,
-      "July": 31, "August": 31, "September": 30, "October": 31, "November": 30, "December": 31
-    };
+    // File upload function to Vercel API
+    async function uploadFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const base64Content = reader.result.split(',')[1];
+            const response = await fetch(VERCEL_UPLOAD_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                filename: `uploads/${file.name}`,
+                contentBase64: base64Content,
+                commitMessage: `Add file ${file.name}`
+              }),
+            });
+
+            const text = await response.text();
+            try {
+              const data = JSON.parse(text);
+              if (data.success) {
+                resolve(data.fileUrl);
+              } else {
+                reject(data.error || "Upload failed");
+              }
+            } catch {
+              reject("Invalid response from server");
+            }
+          } catch (e) {
+            reject(e.message);
+          }
+        };
+        reader.onerror = () => reject("File read error");
+        reader.readAsDataURL(file);
+      });
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
+      const months = {
+        "January": 31, "February": 28, "March": 31, "April": 30, "May": 31, "June": 30,
+        "July": 31, "August": 31, "September": 30, "October": 31, "November": 30, "December": 31
+      };
+
       const body = document.body;
       for (const [month, days] of Object.entries(months)) {
         const details = document.createElement('details');
@@ -60,8 +95,7 @@
             <textarea id="${id}" placeholder="Write your work..."></textarea>
             <div class="upload-section">
               <label for="${id}_file">Project Workspace:</label>
-              <input type="file" id="${id}_file" name="${id}_file">
-              <div class="status" id="${id}_status"></div>
+              <input type="file" id="${id}_file" name="${id}_file" />
             </div>
           `;
           details.appendChild(block);
@@ -69,7 +103,7 @@
         body.insertBefore(details, body.lastElementChild);
       }
 
-      // Save textarea text in localStorage
+      // Load saved textarea content from localStorage
       const allTextareas = document.querySelectorAll('textarea');
       allTextareas.forEach(textarea => {
         const id = textarea.id;
@@ -79,46 +113,27 @@
         });
       });
 
-      // File upload listener
-      document.addEventListener('change', function(event) {
-        if (event.target.type === "file" && event.target.files.length > 0) {
-          const file = event.target.files[0];
-          const dayId = event.target.id.replace("_file", ""); // e.g. "January_1"
-          const path = `uploads/${dayId}/${file.name}`; // Upload path in repo
-          const statusEl = document.getElementById(dayId + "_status");
-          statusEl.textContent = "Preparing upload...";
-          uploadFileToBackend(file, path, statusEl);
-        }
+      // Setup file inputs upload listener
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+      fileInputs.forEach(input => {
+        input.addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          try {
+            alert(`Uploading file: ${file.name}`);
+            const url = await uploadFile(file);
+            alert(`File uploaded successfully!\nURL: ${url}`);
+            console.log("Uploaded file URL:", url);
+          } catch (err) {
+            alert(`Upload failed: ${err}`);
+            console.error(err);
+          }
+          // Clear input so same file can be uploaded again if needed
+          e.target.value = "";
+        });
       });
     });
-
-    async function uploadFileToBackend(file, uploadPath, statusEl) {
-      try {
-        // Read file as base64
-        const arrayBuffer = await file.arrayBuffer();
-        const base64Content = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-
-        statusEl.textContent = "Uploading...";
-        const resp = await fetch(VERCEL_UPLOAD_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: uploadPath,
-            contentBase64: base64Content,
-            commitMessage: `Add ${file.name} for ${uploadPath}`
-          })
-        });
-
-        const result = await resp.json();
-        if (resp.ok) {
-          statusEl.innerHTML = '✅ Uploaded. File URL: <a class="link" target="_blank" href="' + result.fileUrl + '">' + result.fileUrl + '</a>';
-        } else {
-          statusEl.textContent = '❌ Upload failed: ' + (result.error || result.message || JSON.stringify(result));
-        }
-      } catch (err) {
-        statusEl.textContent = 'Error: ' + err.message;
-      }
-    }
   </script>
 </body>
 </html>
